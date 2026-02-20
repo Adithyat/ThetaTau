@@ -35,13 +35,13 @@ env:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: palisades
+          ref: lightweight-checker
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -54,22 +54,8 @@ jobs:
           path: ~/.cache/pip
           key: pip-${{ hashFiles('requirements.txt') }}
 
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        id: playwright-cache
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-chromium-${{ runner.os }}
-
-      - name: Install Python packages
+      - name: Install dependencies
         run: pip install -r requirements.txt
-
-      - name: Install Playwright Chromium
-        if: steps.playwright-cache.outputs.cache-hit != 'true'
-        run: playwright install chromium
-
-      - name: Install Playwright system deps
-        run: playwright install-deps chromium
 
       - name: Run parking checker
         env:
@@ -98,7 +84,6 @@ jobs:
             NOTIFY_FLAGS="$NOTIFY_FLAGS sms"
           fi
 
-          # Send healthcheck on the hour (:00) or if manually requested
           HEALTHCHECK_FLAG=""
           MINUTE=$(date -u +%M)
           if [ "$MINUTE" -lt 10 ] || [ "${{ github.event.inputs.healthcheck }}" = "true" ]; then
