@@ -1,0 +1,97 @@
+name: Check Palisades Parking
+
+on:
+  schedule:
+    # Every 10 minutes, 5 AM - midnight PST (1 PM - 8 AM UTC next day)
+    - cron: "*/10 13-23 * * *"
+    - cron: "*/10 0-8 * * *"
+
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: "Dates to check (space-separated, or: this-weekend next-weekend)"
+        required: true
+        default: "this-weekend next-weekend"
+      location:
+        description: "Location: palisades, alpine, or both"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - palisades
+          - alpine
+          - both
+      healthcheck:
+        description: "Send healthcheck notification"
+        required: false
+        type: boolean
+        default: false
+
+env:
+  CHECK_DATES: "this-weekend next-weekend"
+  NOTIFY_DATES: "this-weekend"
+  CHECK_LOCATION: "both"
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run parking checker
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+          SMS_PHONE: ${{ secrets.SMS_PHONE }}
+          SMS_CARRIER: ${{ secrets.SMS_CARRIER }}
+        run: |
+          DATES="${{ github.event.inputs.dates || env.CHECK_DATES }}"
+          LOCATION="${{ github.event.inputs.location || env.CHECK_LOCATION }}"
+          ALERT_DATES="${{ env.NOTIFY_DATES }}"
+
+          NOTIFY_FLAGS=""
+          if [ -n "$NTFY_TOPIC" ]; then
+            NOTIFY_FLAGS="$NOTIFY_FLAGS ntfy"
+          fi
+          if [ -n "$SMTP_TO" ]; then
+            NOTIFY_FLAGS="$NOTIFY_FLAGS email"
+          fi
+          if [ -n "$SMS_PHONE" ] && [ -n "$SMS_CARRIER" ]; then
+            NOTIFY_FLAGS="$NOTIFY_FLAGS sms"
+          fi
+
+          HEALTHCHECK_FLAG=""
+          MINUTE=$(date -u +%M)
+          if [ "$MINUTE" -lt 10 ] || [ "${{ github.event.inputs.healthcheck }}" = "true" ]; then
+            HEALTHCHECK_FLAG="--healthcheck"
+          fi
+
+          if [ -n "$NOTIFY_FLAGS" ]; then
+            python check_parking.py --date $DATES --location "$LOCATION" --notify $NOTIFY_FLAGS --notify-dates $ALERT_DATES $HEALTHCHECK_FLAG
+          else
+            echo "WARNING: No notification secrets configured."
+            echo "Add NTFY_TOPIC, SMTP_*, or SMS_* secrets in repo Settings > Secrets > Actions"
+            python check_parking.py --date $DATES --location "$LOCATION"
+          fi
