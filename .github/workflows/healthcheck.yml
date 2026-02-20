@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
 
 env:
-  CHECK_DATES: "2026-02-22"
-  CHECK_LOCATION: "palisades"
+  CHECK_DATES: "2026-02-21 2026-02-22 2026-02-28 2026-03-01"
+  CHECK_LOCATION: "both"
 
 jobs:
   healthcheck:
