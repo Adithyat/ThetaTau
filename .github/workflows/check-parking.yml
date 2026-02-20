@@ -30,8 +30,10 @@ on:
 # Set your target dates and location here for scheduled runs.
 # ============================================================
 env:
-  # Space-separated dates to monitor
+  # All dates to check and display
   CHECK_DATES: "2026-02-21 2026-02-22 2026-02-28 2026-03-01"
+  # Only send push notifications if THESE dates open up
+  NOTIFY_DATES: "2026-02-21 2026-02-22"
   # palisades, alpine, or both
   CHECK_LOCATION: "both"
 
@@ -97,9 +99,11 @@ jobs:
             NOTIFY_FLAGS="$NOTIFY_FLAGS sms"
           fi
 
+          ALERT_DATES="${{ env.NOTIFY_DATES }}"
+
           # Run the checker (single check, no interval — GitHub Actions handles scheduling)
           if [ -n "$NOTIFY_FLAGS" ]; then
-            python check_parking.py --date $DATES --location "$LOCATION" --notify $NOTIFY_FLAGS
+            python check_parking.py --date $DATES --location "$LOCATION" --notify $NOTIFY_FLAGS --notify-dates $ALERT_DATES
           else
             echo "WARNING: No notification secrets configured. Running check-only (no alerts)."
             echo "Add NTFY_TOPIC, SMTP_*, or SMS_* secrets in repo Settings > Secrets > Actions"

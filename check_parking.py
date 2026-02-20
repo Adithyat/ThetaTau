@@ -440,11 +440,13 @@ def build_status_summary(results_by_loc, target_dates):
 # ---------------------------------------------------------------------------
 
 def run_check(pw_instance, locations, target_dates, notify_methods, args):
-    """Run one check cycle. Returns True if any target date has availability."""
+    """Run one check cycle. Returns True if any notify-date has availability."""
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"\n{'='*60}")
     print(f"  Checking at {now}")
     print(f"{'='*60}")
+
+    notify_dates = set(args.notify_dates) if getattr(args, "notify_dates", None) else None
 
     months_needed = set()
     for d in target_dates:
@@ -466,7 +468,8 @@ def run_check(pw_instance, locations, target_dates, notify_methods, args):
             print(format_result(result, loc_key))
             loc_results.append(result)
 
-            if result.get("found") and not result.get("unavailable"):
+            triggers_alert = (notify_dates is None) or (target_date in notify_dates)
+            if triggers_alert and result.get("found") and not result.get("unavailable"):
                 has_spots = any(r["available"] for r in result.get("rates", []))
                 if has_spots:
                     any_available = True
@@ -474,7 +477,12 @@ def run_check(pw_instance, locations, target_dates, notify_methods, args):
         results_by_loc[loc_key] = loc_results
 
     if any_available and notify_methods:
-        msg = build_notification_message(results_by_loc)
+        alert_results = {}
+        for loc, results in results_by_loc.items():
+            filtered = [r for r in results if (notify_dates is None) or (r["date"] in notify_dates)]
+            if filtered:
+                alert_results[loc] = filtered
+        msg = build_notification_message(alert_results)
         if msg:
             send_alerts("Palisades Parking Available!", msg, notify_methods, args)
 
@@ -542,6 +550,12 @@ Notification setup:
         "--stop-on-found", "-s",
         action="store_true",
         help="Stop checking once availability is found",
+    )
+    parser.add_argument(
+        "--notify-dates",
+        nargs="+",
+        default=None,
+        help="Only send alerts for these dates (subset of --date). Defaults to all --date values.",
     )
     parser.add_argument(
         "--healthcheck",
