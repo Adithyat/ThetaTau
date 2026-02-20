@@ -9,9 +9,9 @@ Notification methods: email (SMTP), push (ntfy.sh), SMS (email-to-SMS gateway),
 and local desktop alerts.
 
 Usage:
-    python check_parking.py --date 2026-02-21 --location palisades
+    python check_parking.py --date this-weekend --location palisades
+    python check_parking.py --date this-weekend next-weekend --location both --notify ntfy
     python check_parking.py --date 2026-02-21 --location alpine --interval 60
-    python check_parking.py --date 2026-02-21 2026-02-22 --location both --notify ntfy
 
 Requirements:
     pip install playwright requests
@@ -47,6 +47,53 @@ LOCATIONS = {
         "inventory_id": "eauZ",
     },
 }
+
+
+def resolve_dates(tokens):
+    """
+    Resolve a list of date tokens into concrete YYYY-MM-DD strings.
+
+    Supports:
+      - "this-weekend"  → upcoming Saturday + Sunday
+      - "next-weekend"  → the Saturday + Sunday after this weekend
+      - "YYYY-MM-DD"    → passed through as-is
+    """
+    today = datetime.now().date()
+    days_until_saturday = (5 - today.weekday()) % 7
+    if days_until_saturday == 0 and today.weekday() == 5:
+        this_sat = today
+    elif days_until_saturday == 0:
+        this_sat = today + timedelta(days=7)
+    else:
+        this_sat = today + timedelta(days=days_until_saturday)
+    this_sun = this_sat + timedelta(days=1)
+    next_sat = this_sat + timedelta(days=7)
+    next_sun = next_sat + timedelta(days=1)
+
+    keywords = {
+        "this-weekend": [this_sat, this_sun],
+        "next-weekend": [next_sat, next_sun],
+    }
+
+    resolved = []
+    for token in tokens:
+        lower = token.lower()
+        if lower in keywords:
+            for d in keywords[lower]:
+                ds = d.strftime("%Y-%m-%d")
+                if ds not in resolved:
+                    resolved.append(ds)
+        else:
+            try:
+                datetime.strptime(token, "%Y-%m-%d")
+            except ValueError:
+                print(f"Error: '{token}' is not a valid date or keyword.", file=sys.stderr)
+                print(f"  Use YYYY-MM-DD, this-weekend, or next-weekend.", file=sys.stderr)
+                sys.exit(1)
+            if token not in resolved:
+                resolved.append(token)
+
+    return resolved
 
 # Common US carrier email-to-SMS gateways
 SMS_GATEWAYS = {
@@ -504,10 +551,14 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s --date 2026-02-21 --location palisades
-  %(prog)s --date 2026-02-21 --location alpine --interval 60
-  %(prog)s --date 2026-02-21 2026-02-22 --location both --notify ntfy
+  %(prog)s --date this-weekend --location palisades
+  %(prog)s --date this-weekend next-weekend --location both --notify ntfy
+  %(prog)s --date this-weekend next-weekend --notify-dates this-weekend --notify ntfy
   %(prog)s --date 2026-03-01 -l palisades -i 30 --notify ntfy email
+
+Date keywords:
+  this-weekend    upcoming Saturday + Sunday
+  next-weekend    the following Saturday + Sunday
 
 Notification setup:
   ntfy:   --notify ntfy --ntfy-topic MY_TOPIC  (or set NTFY_TOPIC env var)
@@ -520,7 +571,7 @@ Notification setup:
         "--date", "-d",
         nargs="+",
         required=True,
-        help="Target date(s) to check in YYYY-MM-DD format",
+        help="Date(s) or keywords: YYYY-MM-DD, this-weekend, next-weekend",
     )
     parser.add_argument(
         "--location", "-l",
@@ -555,7 +606,7 @@ Notification setup:
         "--notify-dates",
         nargs="+",
         default=None,
-        help="Only send alerts for these dates (subset of --date). Defaults to all --date values.",
+        help="Only alert for these dates/keywords (subset of --date). Defaults to all.",
     )
     parser.add_argument(
         "--healthcheck",
@@ -565,18 +616,17 @@ Notification setup:
 
     args = parser.parse_args()
 
-    for d in args.date:
-        try:
-            datetime.strptime(d, "%Y-%m-%d")
-        except ValueError:
-            print(f"Error: Invalid date format '{d}'. Use YYYY-MM-DD.", file=sys.stderr)
-            sys.exit(1)
+    args.date = resolve_dates(args.date)
+    if args.notify_dates:
+        args.notify_dates = resolve_dates(args.notify_dates)
 
     locations = list(LOCATIONS.keys()) if args.location == "both" else [args.location]
 
     print("Palisades Tahoe Parking Checker")
     print(f"  Location(s): {', '.join(loc.upper() for loc in locations)}")
     print(f"  Date(s):     {', '.join(args.date)}")
+    if args.notify_dates:
+        print(f"  Alert for:   {', '.join(args.notify_dates)}")
     if args.interval > 0:
         print(f"  Interval:    every {args.interval}s")
     if args.notify:

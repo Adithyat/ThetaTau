@@ -30,10 +30,10 @@ on:
 # Set your target dates and location here for scheduled runs.
 # ============================================================
 env:
-  # All dates to check and display
-  CHECK_DATES: "2026-02-21 2026-02-22 2026-02-28 2026-03-01"
+  # Dates to check (supports: this-weekend, next-weekend, YYYY-MM-DD)
+  CHECK_DATES: "this-weekend next-weekend"
   # Only send push notifications if THESE dates open up
-  NOTIFY_DATES: "2026-02-21 2026-02-22"
+  NOTIFY_DATES: "this-weekend"
   # palisades, alpine, or both
   CHECK_LOCATION: "both"
 
