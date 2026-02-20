@@ -2,10 +2,11 @@ name: Check Palisades Parking
 
 on:
   # Run on a schedule (cron is in UTC)
-  # Default: every 10 minutes from 5 AM - 3 PM PST (1 PM - 11 PM UTC)
-  # Adjust the cron expression to your needs.
+  # Every 10 minutes from 5 AM - midnight PST (1 PM - 8 AM UTC next day)
+  # Split into two ranges because cron wraps at midnight UTC.
   schedule:
     - cron: "*/10 13-23 * * *"
+    - cron: "*/10 0-8 * * *"
 
   # Allow manual runs from the GitHub Actions tab
   workflow_dispatch:
