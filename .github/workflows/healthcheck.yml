@@ -1,0 +1,62 @@
+name: Parking Checker Healthcheck
+
+on:
+  # Hourly heartbeat — sends a status ping so you know the service is alive
+  schedule:
+    - cron: "0 * * * *"
+
+  workflow_dispatch:
+
+env:
+  CHECK_DATES: "this-weekend next-weekend"
+  CHECK_LOCATION: "both"
+
+jobs:
+  healthcheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: palisades
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Run healthcheck
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          SMTP_TO: ${{ secrets.SMTP_TO }}
+        run: |
+          NOTIFY_FLAGS=""
+          if [ -n "$NTFY_TOPIC" ]; then
+            NOTIFY_FLAGS="$NOTIFY_FLAGS ntfy"
+          fi
+          if [ -n "$SMTP_TO" ]; then
+            NOTIFY_FLAGS="$NOTIFY_FLAGS email"
+          fi
+
+          if [ -n "$NOTIFY_FLAGS" ]; then
+            python check_parking.py \
+              --date $CHECK_DATES \
+              --location "$CHECK_LOCATION" \
+              --notify $NOTIFY_FLAGS \
+              --healthcheck
+          else
+            echo "No notification secrets configured. Skipping healthcheck."
+          fi
