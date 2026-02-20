@@ -414,6 +414,27 @@ def build_notification_message(results_by_loc):
                     lines.append(f"{loc.upper()} {r['date']}: {rate['description']} ({price})")
     return "\n".join(lines) if lines else None
 
+
+def build_status_summary(results_by_loc, target_dates):
+    """Build a compact status summary for healthcheck messages."""
+    lines = []
+    for loc, results in results_by_loc.items():
+        for r in results:
+            date = r["date"]
+            if not r.get("found"):
+                lines.append(f"{loc.upper()} {date}: not found")
+            elif r.get("reservation_not_needed"):
+                lines.append(f"{loc.upper()} {date}: no reservation needed")
+            elif r.get("sold_out") and not any(rt["available"] for rt in r.get("rates", [])):
+                lines.append(f"{loc.upper()} {date}: SOLD OUT")
+            elif r.get("unavailable"):
+                lines.append(f"{loc.upper()} {date}: unavailable")
+            else:
+                avail = [rt for rt in r.get("rates", []) if rt["available"]]
+                sold = [rt for rt in r.get("rates", []) if not rt["available"]]
+                lines.append(f"{loc.upper()} {date}: {len(avail)} available, {len(sold)} sold out")
+    return "\n".join(lines) if lines else "No data"
+
 # ---------------------------------------------------------------------------
 # Main check loop
 # ---------------------------------------------------------------------------
@@ -456,6 +477,15 @@ def run_check(pw_instance, locations, target_dates, notify_methods, args):
         msg = build_notification_message(results_by_loc)
         if msg:
             send_alerts("Palisades Parking Available!", msg, notify_methods, args)
+
+    if getattr(args, "healthcheck", False) and notify_methods:
+        summary = build_status_summary(results_by_loc, target_dates)
+        send_alerts(
+            "Parking Checker Heartbeat",
+            f"Checker is running as of {now}\n\n{summary}",
+            notify_methods,
+            args,
+        )
 
     return any_available
 
@@ -512,6 +542,11 @@ Notification setup:
         "--stop-on-found", "-s",
         action="store_true",
         help="Stop checking once availability is found",
+    )
+    parser.add_argument(
+        "--healthcheck",
+        action="store_true",
+        help="Send a status notification regardless of availability (for heartbeat monitoring)",
     )
 
     args = parser.parse_args()
